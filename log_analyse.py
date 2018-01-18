@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
+import os
 
 access_log     = 'access_log.txt'
 catalina       = 'catalina.out'
 deny_file      = 'deny_list.txt'
 deny_work_file = 'deny_work_list.txt'
-
-
+compare_date   = '2018/01/17'         # yyyy/mm/dd形式で記述すること
+result         = ''
+result_list    = []
+result_file    = 'result.txt'
 
 ###########################################################
 # アクセス禁止画面が表示されたログをcatalina.outから取得する処理 #
@@ -66,13 +69,16 @@ def create_target_log_list(log_list, target_num):
 # ログ解析処理                                              #
 ###########################################################
 
-def log_analyse():
+def log_analyse(result):
   # アクセス禁止リストを1行づつ読み込む
   with open(deny_work_file, 'r') as f:
     for row in f:
+      print row
       row_length = len(row) - 1     # 改行コード削除のため-1を実施
       time = row[16:24]
       ip   = row[26:row_length]
+      result = ""                # resultの初期化
+      result = row[:row_length]
 
       # アクセスログを展開し、取得したリストのIPのみ取得する
       filtered_a_log = []
@@ -92,66 +98,107 @@ def log_analyse():
 
       #  検索したエラー発生箇所の直前の処理を表示する。
       # print filtered_a_log[target_num]
-
-      # requestのsessionIDが格納されているか判別する
+      # エラー発生を引き起こした操作を取得
       split_a_log = filtered_a_log[target_num].split(" ")
-      # print split_a_log[7]    # Get resources
-      # print split_a_log[11]   # request's sessionID
-      # print split_a_log[12]   # referer
-      # print split_a_log[13]   # response's sessionID
+      # print u"Get resources : " + split_a_log[7]       # Get resources
 
-
-      # 条件分岐の本番ポイント
-      # sessionIDが存在するかを確認する
-      if split_a_log[11] == "-":
-        print "requestのsessionIDなしのためアクセス禁止"
-        # 前日タブ / 当日タブ判定
-        # csrfToken取得
-        if split_a_log[7].find("csrf=") >= 0:
-          csrf_start = split_a_log[7].find("csrf=")
-          csrf_end   = split_a_log[7][csrf_start:].find("&") + csrf_start
-          # print csrf_start
-          # print csrf_end
-          # print split_a_log[7][csrf_start:csrf_end]
-
-        # 検索対象より古いログのリストを作成する
-          create_target_log_list(filtered_a_log, target_num)
-
-          # 検索対象ログにcsrfTokenが存在しているか確認する
-          # ****** TODO: ここの条件は見直しすること。********
-          # for k in target_log_list:
-          #   if split_a_log[7].find("csrf=") >= 0:
-          #     print "GETにcsrfがあるので前日タブ"
-          #   else:
-          #     print "条件に引っかからないので当日"
-
+      # 環境確認
+      if split_a_log[7].find("prod001") >= 0:
+      	print u"prod001です"
       else:
-        # print "requestのsessionIDあり. sessionID : " + split_a_log[11]
-        # 前日タブ / 当日タブ判定
+      	print u"そのほかの環境です"
+      	continue
+
+
+      # For get [logintime].
+      if split_a_log[7].find("logintime=") >= 0:
+  	    logintime_start = split_a_log[7].find("logintime=") + 10
+	    logintime_end   = logintime_start + 10
+	    logindate = split_a_log[7][logintime_start:logintime_end]
+      else:
+      	logindate = 0
+
+      # For get [loginid].
+      if split_a_log[7].find("loginid=") >= 0:
+  	    loginid_start = split_a_log[7].find("loginid=") + 8
+	    loginid_end   = loginid_start + 9
+	    loginid = split_a_log[7][loginid_start:loginid_end]
+      else:
+      	loginid = "ログインID取得できません"
+
+      result += ", " + str(logindate)
+      result += ", " + loginid
+
+      # print u"loginID : " + loginid
+      # print u"request's sessionID : " + split_a_log[11]   # request's sessionID
+      # print u"referer : " + split_a_log[12]            # referer
+      # print u"response's sessionID : " + split_a_log[13]   # response's sessionID
+
+      ############# 条件分岐の本番ポイント ####################
+
+      #### step1 当日/前日タブの判定を行なう
+      if logindate == compare_date:
+      	result += ", 当日タブ,"
+      elif logindate == 0:
+      	result += ", logindateのパラメタなしのため判定不可,"
+      elif logindate != compare_date:
+      	result += ", 前日タブ,"
+      else:
+      	result += ", *****例外*****,"
+
+      #### step2 sessionIDが存在するかを確認する
+      if split_a_log[11] == "-":
+      	result += " requestのsessionIDなしのためアクセス禁止"
+      else:
         # 検索対象より古いログのリストを作成する
         flg = 0
         for i in create_target_log_list(filtered_a_log, target_num):
           if i.find("JSESSIONID=" + split_a_log[11]) >= 0:
             flg = 1
-            if i.find("GET /prod001/login") >= 0:
-              flg = 2
+            # if i.find("GET /dev001/login") >= 0:
+            #   flg = 2
 
         if flg == 1:
-          print "当日発行のsessionIDありのため、当日タブ"
-        elif flg == 2:
-          print "当日発行のsessionIDありのため、当日タブ。ただしlogin画面を表示しただけのsessionIDを利用してrequestしている"
+          result += " 当日発行のsessionIDありでアクセス禁止発生"
+        # elif flg == 2:
+        #   # print u"当日発行のsessionIDありのため、当日タブ。ただしlogin画面を表示しただけのsessionIDを利用してrequestしている"
+        #   result += u" 当日発行のsessionIDありのため、当日タブ。ただしlogin画面を表示しただけのsessionIDを利用してrequestしている"
         else:
-          print "当日発行のsessionIDなしのため、前日タブ"
+          result += " 当日発行のsessionIDなしでアクセス禁止発生"
 
-
-
+      result_list.append(result)
 
 
 ###########################################################
 # メイン処理                                                #
 ###########################################################
-print datetime.now().strftime('%Y/%m/%d %H:%M:%S') + "| 処理開始"
+print datetime.now().strftime('%Y/%m/%d %H:%M:%S') + u"| 処理開始"
+
+if os.path.exists(deny_file) :
+	print u"ファイル初期化します" + deny_file
+	os.remove(deny_file)
+if os.path.exists(deny_work_file):
+	print u"ファイル初期化します" + deny_work_file
+	os.remove(deny_work_file)
+
+print datetime.now().strftime('%Y/%m/%d %H:%M:%S') + u"| 禁止リスト作成開始"
 create_deny_list()
+print datetime.now().strftime('%Y/%m/%d %H:%M:%S') + u"| 禁止リスト作成終了"
+
+print datetime.now().strftime('%Y/%m/%d %H:%M:%S') + u"| 禁止リストワーク作成開始"
 create_deny_work_list()
-log_analyse()
-print datetime.now().strftime('%Y/%m/%d %H:%M:%S') + "| 処理完了"
+print datetime.now().strftime('%Y/%m/%d %H:%M:%S') + u"| 禁止リストワーク作成終了"
+
+print datetime.now().strftime('%Y/%m/%d %H:%M:%S') + u"| ログ解析処理開始"
+log_analyse(result)
+print datetime.now().strftime('%Y/%m/%d %H:%M:%S') + u"| ログ解析処理終了"
+
+# resultをファイルに書き込む
+print u"結果出力開始"
+f = open(result_file, 'w') 
+for i in result_list:
+  f.write(i + "\n")
+f.close()
+
+print u"結果出力終了"
+print datetime.now().strftime('%Y/%m/%d %H:%M:%S') + u"| 処理完了"
