@@ -1,2 +1,3 @@
 # apache-tomcat_log_analyse
-業務用ログ解析ツール
+ログ解析ツール
+python2.7で動作を確認。あとwindowsで動く事を確認した。
