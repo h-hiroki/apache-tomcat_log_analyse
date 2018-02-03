@@ -2,11 +2,13 @@
 from datetime import datetime
 import os
 
+compare_date   = '2018/01/31'         # yyyy/mm/dd形式で記述すること。当日タブ判定日付
+target_env     = 'prod002'            # 環境指定
+
 access_log     = 'access_log.txt'
 catalina       = 'catalina.out'
 deny_file      = 'deny_list.txt'
 deny_work_file = 'deny_work_list.txt'
-compare_date   = '2018/01/17'         # yyyy/mm/dd形式で記述すること
 result         = ''
 result_list    = []
 result_file    = 'result.txt'
@@ -93,7 +95,8 @@ def log_analyse(result):
       target_num = 0
       for i in filtered_a_log:
         if i.find(time) >= 0:
-          if i.find("GET /prod001/login HTTP/1.1") >= 0:
+          # if i.find("GET /prod001/login HTTP/1.1") >= 0:
+          if i.find("GET /%s/login HTTP/1.1" % target_env) >= 0:
             target_num = filtered_a_log.index(i) - 1
 
       #  検索したエラー発生箇所の直前の処理を表示する。
@@ -103,8 +106,10 @@ def log_analyse(result):
       # print u"Get resources : " + split_a_log[7]       # Get resources
 
       # 環境確認
-      if split_a_log[7].find("prod001") >= 0:
-      	print u"prod001です"
+      # if split_a_log[7].find("prod001") >= 0:
+      if split_a_log[7].find(target_env) >= 0:
+      	print u"%sです" % target_env
+      	# print u"prod001です"
       else:
       	print u"そのほかの環境です"
       	continue
